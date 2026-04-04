@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Mapa de Interpretaciones Musicales</title>
+    <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <style>
+        :root { --accent: #2196f3; --bg: #f4f7f6; --panel: #ffffff; --danger: #f44336; }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); display: flex; height: 100vh; margin: 0; padding: 20px; box-sizing: border-box; gap: 20px; }
+        
+        .panel-control { background: var(--panel); padding: 25px; border-radius: 15px; width: 350px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; flex-direction: column; overflow-y: auto; }
+        
+        .header-mapa { font-size: 0.9em; letter-spacing: 3px; color: #888; font-weight: bold; margin-bottom: 15px; border-bottom: 1px solid #eee; padding-bottom: 5px; text-transform: uppercase; }
+        
+        #nombreObraDisplay { font-size: 1.6em; font-weight: bold; color: #1a1a1a; border-left: 5px solid #000; padding-left: 15px; line-height: 1.1; margin-bottom: 5px; }
+        #compositorDisplay { font-size: 1.2em; font-weight: bold; color: #444; padding-left: 20px; margin-bottom: 3px; }
+        #anioDisplay { font-size: 1em; font-weight: bold; color: #777; padding-left: 20px; margin-bottom: 10px; }
+
+        .btn-partitura-columna { background: #000; color: white; padding: 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; width: calc(100% - 20px); margin-left: 20px; margin-top: 5px; text-align: center; transition: 0.3s; }
+        .btn-partitura-columna:hover { background: #333; }
+        
+        .panel-grafo { flex-grow: 1; background: #fff; border-radius: 15px; position: relative; border: 1px solid #ddd; overflow: hidden; }
+        #grafo-contenedor { width: 100%; height: 100%; }
+
+        label { font-size: 0.85em; font-weight: bold; color: #555; margin-top: 10px; display: block; }
+        input, textarea { width: 100%; padding: 10px; margin: 5px 0 15px; border: 1px solid #ccc; border-radius: 8px; box-sizing: border-box; font-size: 0.9em; }
+        
+        .btn-main { background: #000; color: white; padding: 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; width: 100%; transition: 0.3s; margin-bottom: 5px; }
+        
+        .btn-share-colab { background: #673ab7; color: white; margin-top: 15px; font-size: 0.85em; }
+        .btn-share-obs { background: #455a64; color: white; margin-top: 5px; font-size: 0.85em; }
+
+        .instrucciones { background: #f9f9f9; padding: 15px; border-radius: 10px; margin-top: 25px; border: 1px solid #eee; }
+        .instrucciones h4 { margin: 0 0 10px 0; font-size: 0.85em; color: #333; text-transform: uppercase; }
+        .instrucciones p { margin: 5px 0; font-size: 0.8em; color: #666; line-height: 1.4; }
+
+        #info-cuadro { position: absolute; top: 20px; right: 20px; width: 320px; background: white; padding: 20px; border-radius: 12px; display: none; box-shadow: 0 8px 30px rgba(0,0,0,0.15); border-top: 6px solid var(--accent); z-index: 100; }
+        .ficha-datos { font-size: 0.95em; line-height: 1.6; margin-bottom: 10px; }
+        .ficha-datos b { color: #888; font-size: 0.75em; text-transform: uppercase; display: block; margin-top: 8px; }
+        .yt-original { font-size: 0.8em; color: var(--accent); font-style: italic; margin-bottom: 10px; display: block; border-bottom: 1px solid #eee; padding-bottom: 5px;}
+        
+        .btn-delete { background: var(--danger); color: white; padding: 8px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; width: 100%; margin-top: 15px; font-size: 0.8em; opacity: 0.8; transition: 0.3s; }
+        .btn-delete:hover { opacity: 1; }
+    </style>
+</head>
+<body>
+
+    <div class="panel-control">
+        <div class="header-mapa">MAPA DE INTERPRETACIONES</div>
+        
+        <div id="nombreObraDisplay">Sin Título</div>
+        <div id="compositorDisplay"></div>
+        <div id="anioDisplay"></div>
+        <div id="btnPartituraContenedor"></div>
+        
+        <div id="config-inicial" style="margin-top: 10px;">
+            <label>Enlaces de YouTube (uno por línea)</label>
+            <textarea id="urlsList" placeholder="Pega links nuevos aquí..."></textarea>
+            <button id="btn-generar" class="btn-main" onclick="procesarVideos()">Generar Grafo Interactivo</button>
+        </div>
+
+        <div id="area-compartir" style="display:none;">
+            <button class="btn-main btn-share-colab" onclick="generarLink(true)">🔗 Link para Colaborador (Editable)</button>
+            <button class="btn-main btn-share-obs" onclick="generarLink(false)">👁️ Link para Observador (Solo Lectura)</button>
+            <p id="msg-share" style="font-size: 0.7em; color: #673ab7; margin-top: 10px; display: none; font-weight: bold;"></p>
+        </div>
+
+        <div class="instrucciones" id="guia-uso">
+            <div id="texto-guia">
+                <h4>¿Cómo funciona?</h4>
+                <p><strong>Paso 1:</strong> Elegí la obra a analizar, seleccioná el nodo central y cargá los datos.</p>
+                <p><strong>Paso 2:</strong> Subí los links de YouTube (máx. 100) y generá el grafo.</p>
+                <p><strong>Paso 3:</strong> Seleccioná los nodos y editá la información.</p>
+                <p><strong>Paso 4:</strong> ¡Compartí el grafo!</p>
+            </div>
+            <div id="invitacion-observador" style="display:none;">
+                <h4>¿Qué estás viendo?</h4>
+                <p>Estás viendo un grafo con diversas interpretaciones de la misma obra. Explorá los nodos para acceder a la información de cada interpretación y ver los videos en YouTube.</p>
+                <hr style="border:0; border-top:1px solid #ddd; margin:10px 0;">
+                <p><strong>¿Querés crear tu propio grafo?</strong></p>
+                <button class="btn-main" style="background:#2196f3; font-size:0.8em; margin-top:10px;" onclick="crearNuevo()">Crear mi propio grafo</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="panel-grafo">
+        <div id="grafo-contenedor"></div>
+        <div id="info-cuadro">
+            <span id="info-yt-original" class="yt-original"></span>
+            <h3 id="info-titulo" style="margin:0 0 15px 0; font-size: 1.2em;"></h3>
+            <div id="display-ficha" class="ficha-datos"></div>
+            
+            <div id="form-edicion">
+                <label>Carga rápida (separar con puntos '.'):</label>
+                <input type="text" id="inputRapido" placeholder="Intérprete . Fecha . Lugar" oninput="autoRepartir()">
+                <div id="campos-dinamicos"></div>
+                <button class="btn-main" style="background:var(--accent);" onclick="guardarFicha()">Guardar Información</button>
+                <button id="btn-eliminar-nodo" class="btn-delete" onclick="eliminarNodoActivo()">Eliminar este nodo</button>
+            </div>
+            <div id="footer-ficha"></div>
+        </div>
+    </div>
+
+<script>
+    let nodes = new vis.DataSet();
+    let edges = new vis.DataSet();
+    let network;
+    let datosNodos = {}; 
+    let idNodoActivo = null;
+    let pdfUrlGlobal = null;
+    let modoLectura = false;
+    let grafoIniciado = false;
+
+    window.onload = function() {
+        const params = new URLSearchParams(window.location.search);
+        const data = params.get('s');
+        modoLectura = params.get('edit') === 'false';
+
+        const container = document.getElementById('grafo-contenedor');
+        network = new vis.Network(container, { nodes, edges }, { 
+            physics: { solver: 'forceAtlas2Based', forceAtlas2Based: { gravitationalConstant: -50, springLength: 150 } } 
+        });
+        network.on("click", (p) => { if (p.nodes.length > 0) abrirFicha(p.nodes[0]); else document.getElementById('info-cuadro').style.display = 'none'; });
+
+        if (data) {
+            try {
+                const decoded = JSON.parse(decodeURIComponent(escape(atob(data))));
+                datosNodos = decoded.n;
+                pdfUrlGlobal = decoded.p;
+                
+                if(modoLectura) {
+                    document.getElementById('config-inicial').style.display = 'none';
+                    document.getElementById('area-compartir').style.display = 'none';
+                    document.getElementById('texto-guia').style.display = 'none';
+                    document.getElementById('invitacion-observador').style.display = 'block';
+                }
+                
+                if (Object.keys(datosNodos).length > 1) {
+                    document.getElementById('btn-generar').innerText = "Actualizar Grafo Interactivo";
+                    grafoIniciado = true;
+                }
+                reconstruirMapa();
+            } catch (e) { console.error("Error al cargar datos", e); }
+        } else {
+            datosNodos[0] = { tipo: 'obra', titulo: "Obra", comp: "", anio: "", guardado: false };
+            reconstruirMapa();
+        }
+    };
+
+    function autoRepartir() {
+        const raw = document.getElementById('inputRapido').value;
+        const partes = raw.split('.');
+        const inputs = document.querySelectorAll('#campos-dinamicos input');
+        if(partes[0] && inputs[0]) inputs[0].value = partes[0].trim();
+        if(partes[1] && inputs[1]) inputs[1].value = partes[1].trim();
+        if(partes[2] && inputs[2]) inputs[2].value = partes[2].trim();
+    }
+
+    async function procesarVideos() {
+        const rawUrls = document.getElementById('urlsList').value.split('\n').filter(u => u.trim() !== "");
+        const urlsExistentes = Object.values(datosNodos).filter(d => d.tipo === 'video').map(d => d.url);
+
+        for(let url of rawUrls) {
+            let cleanUrl = url.trim();
+            if (cleanUrl !== "" && !urlsExistentes.includes(cleanUrl)) {
+                const newId = "v_" + Date.now() + Math.floor(Math.random() * 1000);
+                let t = "Cargando...";
+                try {
+                    const r = await fetch(`https://noembed.com/embed?url=${cleanUrl}`);
+                    const d = await r.json(); t = d.title || "Video";
+                } catch { t = "Video"; }
+                datosNodos[newId] = { tipo: 'video', yt: t, url: cleanUrl, int: "", fecha: "", lugar: "", guardado: false };
+            }
+        }
+        document.getElementById('btn-generar').innerText = "Actualizar Grafo Interactivo";
+        grafoIniciado = true;
+        document.getElementById('urlsList').value = "";
+        reconstruirMapa();
+    }
+
+    function reconstruirMapa() {
+        nodes.clear();
+        edges.clear();
+        Object.keys(datosNodos).forEach(id => {
+            const d = datosNodos[id];
+            if (d.tipo === 'obra') {
+                nodes.add({ id: 0, label: "Partitura Original", shape: 'diamond', size: 35, color: '#000', font: { color: '#878787', face: 'Segoe UI', size: 14 } });
+                actualizarPanelIzquierdo(d);
+            } else {
+                const hash = d.int ? d.int.split("").reduce((a,b)=>{a=((a<<5)-a)+b.charCodeAt(0);return a&a},0) : 0;
+                nodes.add({ id: id, label: d.int || d.yt, shape: 'dot', size: 20, color: d.int ? `hsl(${Math.abs(hash)%360}, 65%, 55%)` : '#2196f3', font: { color: '#000000', size: 12 } });
+                edges.add({ from: 0, to: id });
+            }
+        });
+        if(!modoLectura && (grafoIniciado || Object.keys(datosNodos).length > 1)) document.getElementById('area-compartir').style.display = 'block';
+    }
+
+    function actualizarPanelIzquierdo(d) {
+        document.getElementById('nombreObraDisplay').innerText = d.titulo;
+        document.getElementById('compositorDisplay').innerText = d.comp || "";
+        document.getElementById('anioDisplay').innerText = d.anio || "";
+        const ctn = document.getElementById('btnPartituraContenedor');
+        ctn.innerHTML = (pdfUrlGlobal && pdfUrlGlobal.trim() !== "") ? `<button class="btn-partitura-columna" onclick="window.open('${pdfUrlGlobal}', '_blank')">VER PARTITURA</button>` : "";
+    }
+
+    function abrirFicha(id) {
+        idNodoActivo = id; const d = datosNodos[id];
+        document.getElementById('info-cuadro').style.display = 'block';
+        document.getElementById('info-yt-original').innerText = d.tipo === 'video' ? "YouTube: " + d.yt : "Partitura original";
+        const campos = document.getElementById('campos-dinamicos');
+        document.getElementById('inputRapido').value = "";
+
+        document.getElementById('btn-eliminar-nodo').style.display = (d.tipo === 'video' && !modoLectura) ? 'block' : 'none';
+
+        if(d.tipo === 'obra') {
+            campos.innerHTML = `<input type="text" id="edit-1" placeholder="Nombre Obra" value="${d.titulo}"><input type="text" id="edit-2" placeholder="Compositor" value="${d.comp}"><input type="text" id="edit-3" placeholder="Año" value="${d.anio}"><input type="text" id="edit-pdf" placeholder="URL Partitura" value="${pdfUrlGlobal || ''}">`;
+            document.getElementById('info-titulo').innerText = d.titulo;
+        } else {
+            campos.innerHTML = `<input type="text" id="edit-1" placeholder="Intérprete/s" value="${d.int || ''}"><input type="text" id="edit-2" placeholder="Fecha" value="${d.fecha || ''}"><input type="text" id="edit-3" placeholder="Lugar" value="${d.lugar || ''}">`;
+            document.getElementById('info-titulo').innerText = d.int || d.yt;
+        }
+        actualizarVistaFicha(d);
+    }
+
+    function eliminarNodoActivo() {
+        if (idNodoActivo === 0) return;
+        if (confirm("¿Seguro que quieres eliminar esta interpretación del mapa?")) {
+            delete datosNodos[idNodoActivo];
+            document.getElementById('info-cuadro').style.display = 'none';
+            reconstruirMapa();
+        }
+    }
+
+    function actualizarVistaFicha(d) {
+        const [disp, form, foot] = [document.getElementById('display-ficha'), document.getElementById('form-edicion'), document.getElementById('footer-ficha')];
+        if(d.guardado || modoLectura) {
+            form.style.display = 'none'; disp.style.display = 'block';
+            disp.innerHTML = d.tipo === 'obra' ? `<b>Obra:</b> ${d.titulo} <b>Compositor:</b> ${d.comp} <b>Año:</b> ${d.anio}` : `<b>Intérprete:</b> ${d.int} <b>Fecha:</b> ${d.fecha} <b>Lugar:</b> ${d.lugar}`;
+            if(!modoLectura) disp.innerHTML += `<button onclick="editarNuevamente()" style="display:block; margin-top:10px; color:blue; border:none; background:none; cursor:pointer; font-size:0.8em;">✏️ Editar ficha</button>`;
+            foot.innerHTML = (d.tipo==='video') ? `<button class="btn-main" style="background:#eee; color:#333; margin-top:10px;" onclick="window.open('${d.url}', '_blank')">Ver en YouTube ↗</button>` : "";
+        } else { form.style.display = 'block'; disp.style.display = 'none'; foot.innerHTML = ""; }
+    }
+
+    function guardarFicha() {
+        const d = datosNodos[idNodoActivo];
+        const v1 = document.getElementById('edit-1').value;
+        const v2 = document.getElementById('edit-2').value;
+        const v3 = document.getElementById('edit-3').value;
+        if(d.tipo === 'obra') {
+            d.titulo = v1; d.comp = v2; d.anio = v3; pdfUrlGlobal = document.getElementById('edit-pdf').value;
+            actualizarPanelIzquierdo(d);
+        } else {
+            d.int = v1; d.fecha = v2; d.lugar = v3;
+        }
+        d.guardado = true;
+        reconstruirMapa();
+        abrirFicha(idNodoActivo);
+    }
+
+    function editarNuevamente() { datosNodos[idNodoActivo].guardado = false; actualizarVistaFicha(datosNodos[idNodoActivo]); }
+
+    function generarLink(editable) {
+        const obj = { n: datosNodos, p: pdfUrlGlobal };
+        const str = btoa(unescape(encodeURIComponent(JSON.stringify(obj))));
+        const url = window.location.origin + window.location.pathname + "?s=" + str + "&edit=" + editable;
+        navigator.clipboard.writeText(url).then(() => {
+            const m = document.getElementById('msg-share');
+            m.innerText = editable ? "¡Link de Colaborador copiado!" : "¡Link de Observador copiado!";
+            m.style.display = 'block';
+            setTimeout(() => m.style.display = 'none', 3000);
+        });
+    }
+
+    function crearNuevo() {
+        window.location.href = window.location.origin + window.location.pathname;
+    }
+</script>
+</body>
+</html>
